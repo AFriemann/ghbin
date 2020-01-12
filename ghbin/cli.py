@@ -5,23 +5,34 @@
 #
 # Distributed under terms of the 3-clause BSD license.
 
-import json
+import logging
 import os
-import shutil
 import tempfile
 
 import click
-import requests
-from simple_tools.interaction import collect
+import coloredlogs
 
+import ghbin.archive as archive
 import ghbin.config as config
+import ghbin.files as files
+import ghbin.github as github
 
 
 @click.group()
+@click.option("-d", "--debug", is_flag=True, default=False, show_default=True, help="Enable debug logging.")
+@click.option("-t", "--trace", is_flag=True, default=False, show_default=True, help="Enable spammy logging.")
 @click.option('-c', '--config', 'config_path', type=click.Path(exists=True, dir_okay=False),
               default=os.path.expanduser('~/.config/ghbin/config.yaml'))
 @click.pass_context
-def main(ctx, config_path):
+def main(ctx, debug, trace, config_path):
+    coloredlogs.install(level=logging.DEBUG if debug else logging.INFO)
+
+    if not trace:
+        logging.getLogger("botocore").setLevel(
+            logging.WARN if not debug else logging.INFO)
+        logging.getLogger("urllib3").setLevel(
+            logging.WARN if not debug else logging.INFO)
+
     ctx.obj = config.load(config_path)
 
 
@@ -29,22 +40,15 @@ def main(ctx, config_path):
 @click.pass_obj
 def main_install(obj):
     for source in obj.get('sources', []):
-        #print(source)
-
         name = source['name']
-        asset = source.get('asset')
-        version = source.get('version', 'latest')
         repository = source['repository']
 
-        release_info = requests.get(f"https://api.github.com/repos/{repository}/releases/{version}").json()
+        print(f"installing {name} from {repository}")
 
-        if version == 'latest':
-            version = release_info['name']
+        asset = source.get('asset')
+        version = source.get('version', 'latest')
 
-        if asset is None:
-            asset = collect([entry['name'] for entry in release_info['assets']])
-
-        response = requests.get(f"https://github.com/{repository}/releases/download/{version}/{asset}")
+        response = github.download(repository, version, asset)
 
         if response.ok:
             with tempfile.TemporaryDirectory() as dirname:
@@ -53,12 +57,11 @@ def main_install(obj):
                 with open(tmp_path, 'wb') as stream:
                     stream.write(response.content)
 
-                fpath = os.path.expanduser(f"~/.local/bin/{name}")
-
-                print(f"installing {asset} to {fpath}")
-
-                shutil.move(tmp_path, fpath)
-                os.chmod(fpath, 0o755)
+                if 'extract' in source:
+                    for member in archive.extract(tmp_path, dirname, source['extract']):
+                        files.install(os.path.join(dirname, member), os.path.expanduser(f"~/.local/bin/{member}"))
+                else:
+                    files.install(tmp_path, os.path.expanduser(f"~/.local/bin/{name}"))
 
 
 @main.command('update')
