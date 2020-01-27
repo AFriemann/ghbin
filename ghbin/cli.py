@@ -24,21 +24,25 @@ import ghbin.github as github
 @click.option('-c', '--config', 'config_path', type=click.Path(exists=True, dir_okay=False),
               default=os.path.expanduser('~/.config/ghbin/config.yaml'))
 @click.pass_context
-def main(ctx, debug, trace, config_path):
+def root(ctx, debug, trace, config_path):
     coloredlogs.install(level=logging.DEBUG if debug else logging.INFO)
 
     if not trace:
-        logging.getLogger("botocore").setLevel(
-            logging.WARN if not debug else logging.INFO)
-        logging.getLogger("urllib3").setLevel(
-            logging.WARN if not debug else logging.INFO)
+        logging.getLogger("botocore").setLevel(logging.WARN)
+        logging.getLogger("urllib3").setLevel(logging.WARN)
+        logging.getLogger("github").setLevel(logging.WARN)
 
     ctx.obj = config.load(config_path)
 
 
-@main.command('install')
+@root.command('install')
+@click.option("--token", help="GitHub access token.")
 @click.pass_obj
-def main_install(obj):
+def root_install(obj, token):
+    client = github.Github(token)
+
+    error = False
+
     for source in obj.get('sources', []):
         name = source['name']
         repository = source['repository']
@@ -48,30 +52,29 @@ def main_install(obj):
         asset = source.get('asset')
         version = source.get('version', 'latest')
 
-        response = github.download(repository, version, asset)
+        content = github.download(repository, version, asset, client=client)
 
-        if response.ok:
-            with tempfile.TemporaryDirectory() as dirname:
-                tmp_path = os.path.join(dirname, asset)
+        with tempfile.TemporaryDirectory() as dirname:
+            tmp_path = os.path.join(dirname, asset)
 
-                with open(tmp_path, 'wb') as stream:
-                    stream.write(response.content)
+            with open(tmp_path, 'wb') as stream:
+                stream.write(content)
 
-                if 'extract' in source:
-                    for member in archive.extract(tmp_path, dirname, source['extract']):
-                        files.install(os.path.join(dirname, member), os.path.expanduser(f"~/.local/bin/{member}"))
-                else:
-                    files.install(tmp_path, os.path.expanduser(f"~/.local/bin/{name}"))
+            if 'extract' in source:
+                for member in archive.extract(tmp_path, dirname, source['extract']):
+                    files.install(os.path.join(dirname, member), os.path.expanduser(f"~/.local/bin/{member}"))
+            else:
+                files.install(tmp_path, os.path.expanduser(f"~/.local/bin/{name}"))
 
 
-@main.command('update')
+@root.command('update')
 @click.pass_obj
-def main_update(obj):
+def root_update(obj):
     for source in obj.get('sources', []):
         print(source)
 
 
-@main.group('config')
+@root.group('config')
 def cfg():
     pass
 
@@ -80,3 +83,10 @@ def cfg():
 @click.pass_obj
 def cfg_show(obj):
     print(obj)
+
+
+def main():
+    try:
+        root(auto_envvar_prefix='GHBIN') # pylint: disable=no-value-for-parameter,unexpected-keyword-arg
+    except RuntimeError as err:
+        print(err)

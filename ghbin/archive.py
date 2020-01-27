@@ -5,9 +5,10 @@
 #
 # Distributed under terms of the 3-clause BSD license.
 
-
 import logging
+import os
 import tarfile
+import zipfile
 
 LOGGER = logging.getLogger(__name__)
 
@@ -15,8 +16,30 @@ LOGGER = logging.getLogger(__name__)
 def extract(archive, directory, members):
     LOGGER.debug("extracting %s from %s to %s", members, archive, directory)
 
-    with tarfile.open(archive, 'r:gz') as obj:
-        for member in members:
-            obj.extract(member, directory)
+    if '.tar' in archive:
+        suffix = os.path.splitext(archive)[1]
+        mode = f"r:{suffix.lstrip('.')}" if suffix != '.tar' else "r"
 
-            yield member
+        LOGGER.debug("treating %s as tar with mode %s", archive, mode)
+
+        with tarfile.open(archive, mode) as obj:
+            for member in members:
+                try:
+                    obj.extract(member, directory)
+
+                    yield member
+                except KeyError as err:
+                    raise RuntimeError(err)
+    elif archive.endswith('zip'):
+        LOGGER.debug("treating %s as zip", archive)
+
+        with zipfile.ZipFile(archive, 'r') as obj:
+            for member in members:
+                try:
+                    obj.extract(member, directory)
+
+                    yield member
+                except KeyError as err:
+                    raise RuntimeError(err)
+    else:
+        raise NotImplementedError(f"extract function for filetype {archive}")
