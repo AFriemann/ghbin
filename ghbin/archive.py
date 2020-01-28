@@ -29,7 +29,7 @@ def extract(archive, directory, members):
 
                     yield member
                 except KeyError as err:
-                    raise RuntimeError(err, obj.namelist())
+                    raise RuntimeError(err, obj.getnames())
     elif archive.endswith('zip'):
         LOGGER.debug("treating %s as zip", archive)
 
