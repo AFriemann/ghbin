@@ -37,20 +37,24 @@ def root(ctx, debug, trace, config_path):
 
 @root.command('install')
 @click.option("--token", help="GitHub access token.")
+@click.option("--force", is_flag=True, default=False, help="GitHub access token.")
 @click.pass_obj
-def root_install(obj, token):
+def root_install(obj, token, force):
     client = github.Github(token)
-
-    error = False
 
     for source in obj.get('sources', []):
         name = source['name']
         repository = source['repository']
 
-        print(f"installing {name} from {repository}")
-
         asset = source.get('asset')
         version = source.get('version', 'latest')
+
+        if not force and 'extract' not in source and files.exists(os.path.expanduser(f"~/.local/bin/{name}")):
+            # bail early when it's a binary and already installed
+            print(f"skipping {name} from {repository}, already installed")
+            continue
+
+        print(f"installing {name} from {repository}")
 
         content = github.download(repository, version, asset, client=client)
 

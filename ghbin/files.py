@@ -17,3 +17,7 @@ def install(source, target, mode=0o755):
 
     shutil.move(source, target)
     os.chmod(target, mode)
+
+
+def exists(target):
+    return os.path.isfile(target)
