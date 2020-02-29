@@ -89,6 +89,12 @@ def cfg_show(obj):
     print(obj)
 
 
+@cfg.command('edit')
+@click.pass_context
+def cfg_edit(ctx):
+    click.edit(filename=ctx.parent.parent.params['config_path'])
+
+
 def main():
     try:
         root(auto_envvar_prefix='GHBIN') # pylint: disable=no-value-for-parameter,unexpected-keyword-arg

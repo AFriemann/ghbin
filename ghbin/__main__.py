@@ -7,4 +7,5 @@
 
 from ghbin.cli import main
 
+# pylint: disable=unexpected-keyword-arg
 main(auto_envvar_prefix='GHBIN')
